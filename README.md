@@ -129,7 +129,7 @@ OpenReply was initially forked from [instagram-comment-to-dm](https://github.com
     <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=diwenne/openreply&type=date&legend=top-left" />
     <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=diwenne/openreply&type=date&legend=top-left" />
   </picture>
-</a>
+</a> 
 
 ## Star the repo
 
