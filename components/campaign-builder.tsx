@@ -49,6 +49,7 @@ interface LoadedCampaign {
   followUpMessage: string | null;
   followUpDelayMinutes: number | null;
   publicReplyEnabled: boolean;
+  publicReplyVerseEnabled: boolean;
   publicReplyMessage: string | null;
   publicReplyMessages: string[];
   isActive: boolean;
@@ -160,6 +161,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [dmTriggerEnabled, setDmTriggerEnabled] = useState(false);
 
   const [publicReplyEnabled, setPublicReplyEnabled] = useState(false);
+  const [publicReplyVerseEnabled, setPublicReplyVerseEnabled] = useState(false);
   const [publicReplyMessages, setPublicReplyMessages] = useState<string[]>([""]);
 
   const [openingDmEnabled, setOpeningDmEnabled] = useState(false);
@@ -167,6 +169,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [openingDmButtonLabel, setOpeningDmButtonLabel] = useState("");
 
   const [dmMessage, setDmMessage] = useState("");
+  const [dmEnabled, setDmEnabled] = useState(true);
   const [linkOpen, setLinkOpen] = useState(false);
   const [trackedDestinationUrl, setTrackedDestinationUrl] = useState("");
   const [linkButtonLabel, setLinkButtonLabel] = useState("Open link");
@@ -260,6 +263,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setKeywordText(c.keywords.join(", "));
         setDmTriggerEnabled(c.dmTriggerEnabled ?? false);
         setPublicReplyEnabled(c.publicReplyEnabled);
+        setPublicReplyVerseEnabled(c.publicReplyVerseEnabled ?? false);
         setPublicReplyMessages(
           c.publicReplyMessages?.length
             ? c.publicReplyMessages
@@ -271,6 +275,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setOpeningDmMessage(c.openingDmMessage ?? "");
         setOpeningDmButtonLabel(c.openingDmButtonLabel ?? "");
         setDmMessage(c.dmMessage);
+        setDmEnabled(Boolean(c.dmMessage?.trim()));
         setLinkButtonLabel(c.linkButtonLabel ?? "Open link");
         setIsActive(c.isActive);
         const link = c.trackedLinks?.[0]?.destinationUrl ?? "";
@@ -330,6 +335,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     setMatchMode("specific");
     setKeywordText((row.keywords ?? []).join(", "));
     setDmMessage(row.dmMessage ?? "");
+    setDmEnabled(Boolean(row.dmMessage?.trim()));
     setPublicReplyEnabled(Boolean(row.publicReply));
     setPublicReplyMessages(row.publicReply ? [row.publicReply] : [""]);
     const hasOpening = Boolean(row.openingDmMessage);
@@ -391,8 +397,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       return setError("Pick a post or reel to trigger the campaign.");
     if (matchMode === "specific" && keywords.length === 0)
       return setError("Add at least one keyword, or switch to any word.");
-    if (!dmMessage.trim()) return setError("Add the DM with the link.");
-    if (openingDmEnabled && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
+if (dmEnabled && !dmMessage.trim())
+      return setError("Add the DM with the link.");
+    if (dmEnabled && openingDmEnabled && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
       return setError("Your opening DM needs a message and a button label.");
 
     setSaving(true);
@@ -406,27 +413,28 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       pendingNextReel: triggerScope === "next",
       matchAnyWord: matchMode === "any",
       keywords: matchMode === "any" ? [] : keywords,
-      dmTriggerEnabled,
-      dmMessage,
-      openingDmEnabled,
-      openingDmMessage: openingDmEnabled ? openingDmMessage : null,
-      openingDmButtonLabel: openingDmEnabled ? openingDmButtonLabel : null,
+      dmTriggerEnabled: dmEnabled ? dmTriggerEnabled : false,
+      dmMessage: dmEnabled ? dmMessage : "",
+      openingDmEnabled: dmEnabled ? openingDmEnabled : false,
+      openingDmMessage: dmEnabled && openingDmEnabled ? openingDmMessage : null,
+      openingDmButtonLabel: dmEnabled && openingDmEnabled ? openingDmButtonLabel : null,
       publicReplyEnabled,
+      publicReplyVerseEnabled,
       publicReplyMessages: publicReplyEnabled
         ? publicReplyMessages.map((m) => m.trim()).filter(Boolean)
         : [],
-      trackedDestinationUrl: trackedDestinationUrl.trim() || "",
-      linkButtonLabel: linkButtonLabel.trim() || "Open link",
-      secondaryDestinationUrl: secondaryDestinationUrl.trim() || "",
-      secondaryButtonLabel: secondaryButtonLabel.trim() || "Open link",
-      requireFollow,
-      followPromptMessage: requireFollow ? followPromptMessage.trim() : "",
-      followPromptButtonLabel: requireFollow
+      trackedDestinationUrl: dmEnabled ? trackedDestinationUrl.trim() || "" : "",
+      linkButtonLabel: dmEnabled ? linkButtonLabel.trim() || "Open link" : "Open link",
+      secondaryDestinationUrl: dmEnabled ? secondaryDestinationUrl.trim() || "" : "",
+      secondaryButtonLabel: dmEnabled ? secondaryButtonLabel.trim() || "Open link" : "Open link",
+      requireFollow: dmEnabled ? requireFollow : false,
+      followPromptMessage: dmEnabled && requireFollow ? followPromptMessage.trim() : "",
+      followPromptButtonLabel: dmEnabled && requireFollow
         ? followPromptButtonLabel.trim() || "i'm following"
         : "",
-      followUpEnabled,
-      followUpMessage: followUpEnabled ? followUpMessage.trim() : "",
-      followUpDelayMinutes: followUpEnabled ? followUpDelayMinutes : 0,
+      followUpEnabled: dmEnabled ? followUpEnabled : false,
+      followUpMessage: dmEnabled && followUpEnabled ? followUpMessage.trim() : "",
+      followUpDelayMinutes: dmEnabled && followUpEnabled ? followUpDelayMinutes : 0,
       isActive: activeValue,
     };
 
@@ -749,7 +757,22 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             />
           </div>
           {publicReplyEnabled && (
-            <div className="space-y-2">
+  <div className="space-y-3">
+    <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+  <div>
+    <span className="text-sm text-foreground">
+      automatically reply with a Bible verse
+    </span>
+    <p className="mt-0.5 text-xs text-muted">
+      Uses a different NKJV verse for each commenter.
+    </p>
+  </div>
+  <Toggle
+  on={publicReplyVerseEnabled}
+  onToggle={() => setPublicReplyVerseEnabled(!publicReplyVerseEnabled)}
+/>
+</div>
+<div className="space-y-2">
               {publicReplyMessages.map((msg, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <input
@@ -795,94 +818,94 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                 identical.
               </p>
             </div>
+            </div>
           )}
         </Section>
 
-        <Section title="They will get">
-          <div className="rounded-lg border border-border p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-foreground">an opening DM</span>
-              <Toggle
-                on={openingDmEnabled}
-                onToggle={() => setOpeningDmEnabled(!openingDmEnabled)}
-              />
-            </div>
-            {openingDmEnabled && (
-              <div className="mt-3 space-y-2">
-                <textarea
-                  value={openingDmMessage}
-                  onChange={(e) => setOpeningDmMessage(e.target.value)}
-                  placeholder="Hey there! I'm so happy you're here 😊"
-                  rows={3}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
-                  maxLength={1000}
-                />
-                <input
-                  value={openingDmButtonLabel}
-                  onChange={(e) => setOpeningDmButtonLabel(e.target.value)}
-                  placeholder="Send me the link"
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
-                  maxLength={64}
-                />
+        {dmEnabled && (
+          <>
+            <Section title="They will get">
+              <div className="rounded-lg border border-border p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-foreground">an opening DM</span>
+                  <Toggle
+                    on={openingDmEnabled}
+                    onToggle={() => setOpeningDmEnabled(!openingDmEnabled)}
+                  />
+                </div>
+                {openingDmEnabled && (
+                  <div className="mt-3 space-y-2">
+                    <textarea
+                      value={openingDmMessage}
+                      onChange={(e) => setOpeningDmMessage(e.target.value)}
+                      placeholder="Hey there! I'm so happy you're here 😊"
+                      rows={3}
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
+                      maxLength={1000}
+                    />
+                    <input
+                      value={openingDmButtonLabel}
+                      onChange={(e) => setOpeningDmButtonLabel(e.target.value)}
+                      placeholder="Send me the link"
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
+                      maxLength={64}
+                    />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          <div className="mt-3 rounded-lg border border-border p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-foreground">
-                a follow requirement first
-              </span>
-              <Toggle
-                on={requireFollow}
-                onToggle={() => setRequireFollow(!requireFollow)}
-              />
-            </div>
-            {requireFollow && (
-              <div className="mt-3 space-y-2">
-                <textarea
-                  value={followPromptMessage}
-                  onChange={(e) => setFollowPromptMessage(e.target.value)}
-                  placeholder="quick favor before i send your link. i don't make any money from this, it's free. if you want to support me, just don't unfollow after, and star the repo on github if it helps you. tap the button once you're following and i'll send it over"
-                  rows={3}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
-                  maxLength={1000}
-                />
-                <input
-                  value={followPromptButtonLabel}
-                  onChange={(e) => setFollowPromptButtonLabel(e.target.value)}
-                  placeholder="i'm following"
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
-                  maxLength={20}
-                />
-                <p className="text-xs text-muted">
-                  We send the link only after they tap the button and Instagram
-                  confirms the follow. If it can&apos;t be verified, we send it
-                  anyway.
-                </p>
+              <div className="mt-3 rounded-lg border border-border p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-foreground">
+                    a follow requirement first
+                  </span>
+                  <Toggle
+                    on={requireFollow}
+                    onToggle={() => setRequireFollow(!requireFollow)}
+                  />
+                </div>
+                {requireFollow && (
+                  <div className="mt-3 space-y-2">
+                    <textarea
+                      value={followPromptMessage}
+                      onChange={(e) => setFollowPromptMessage(e.target.value)}
+                      placeholder="quick favor before i send your link. i don't make any money from this, it's free. if you want to support me, just don't unfollow after, and star the repo on github if it helps you. tap the button once you're following and i'll send it over"
+                      rows={3}
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
+                      maxLength={1000}
+                    />
+                    <input
+                      value={followPromptButtonLabel}
+                      onChange={(e) => setFollowPromptButtonLabel(e.target.value)}
+                      placeholder="i'm following"
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
+                      maxLength={20}
+                    />
+                    <p className="text-xs text-muted">
+                      We send the link only after they tap the button and Instagram
+                      confirms the follow. If it can&apos;t be verified, we send it
+                      anyway.
+                    </p>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </Section>
+            </Section>
 
-        <Section title="And then, they will get">
-          <div className="rounded-lg border border-border p-3 space-y-2">
-            <span className="text-sm text-foreground">a DM with a link</span>
-            <textarea
-              value={dmMessage}
-              onChange={(e) => setDmMessage(e.target.value)}
-              placeholder="Write a message"
-              rows={3}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
-              maxLength={1000}
-            />
-            {linkOpen ? (
-              <div className="space-y-2">
-                <input
-                  value={trackedDestinationUrl}
-                  onChange={(e) => setTrackedDestinationUrl(e.target.value)}
-                  onBlur={ensureLinkToken}
-                  placeholder="https://yourlink.com/offer"
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
+            <Section title="And then, they will get">
+              <div className="rounded-lg border border-border p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-foreground">a DM with a link</span>
+                  <Toggle
+                    on={dmEnabled}
+                    onToggle={() => setDmEnabled(!dmEnabled)}
+                  />
+                </div>
+                <textarea
+                  value={dmMessage}
+                  onChange={(e) => setDmMessage(e.target.value)}
+                  placeholder="Write a message"
+                  rows={3}
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
+                  maxLength={1000}
                 />
                 <input
                   value={linkButtonLabel}
@@ -891,94 +914,106 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                   maxLength={20}
                   className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
                 />
-                {secondLinkOpen ? (
+                {linkOpen ? (
                   <div className="space-y-2 border-t border-border pt-2">
                     <input
-                      value={secondaryDestinationUrl}
-                      onChange={(e) => setSecondaryDestinationUrl(e.target.value)}
-                      placeholder="https://yourlink.com/second"
+                      value={trackedDestinationUrl}
+                      onChange={(e) => setTrackedDestinationUrl(e.target.value)}
+                      placeholder="https://yourlink.com"
                       className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
                     />
-                    <input
-                      value={secondaryButtonLabel}
-                      onChange={(e) => setSecondaryButtonLabel(e.target.value)}
-                      placeholder="Second button label"
-                      maxLength={20}
-                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
-                    />
+                    {secondLinkOpen ? (
+                      <div className="space-y-2 border-t border-border pt-2">
+                        <input
+                          value={secondaryDestinationUrl}
+                          onChange={(e) => setSecondaryDestinationUrl(e.target.value)}
+                          placeholder="https://yourlink.com/second"
+                          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
+                        />
+                        <input
+                          value={secondaryButtonLabel}
+                          onChange={(e) => setSecondaryButtonLabel(e.target.value)}
+                          placeholder="Second button label"
+                          maxLength={20}
+                          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setSecondLinkOpen(true)}
+                        className="w-full rounded-lg border border-border py-2 text-sm text-muted hover:text-foreground"
+                      >
+                        + Add A Second Link
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setSecondLinkOpen(true)}
+                    onClick={() => setLinkOpen(true)}
                     className="w-full rounded-lg border border-border py-2 text-sm text-muted hover:text-foreground"
                   >
-                    + Add A Second Link
+                    + Add A Link
                   </button>
                 )}
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setLinkOpen(true)}
-                className="w-full rounded-lg border border-border py-2 text-sm text-muted hover:text-foreground"
-              >
-                + Add A Link
-              </button>
-            )}
-            <p className="text-xs text-muted">
-              {"{link}"} inserts the tracked link; {"{username}"} personalizes.
-            </p>
-          </div>
-          <div className="mt-3 rounded-lg border border-border p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-foreground">
-                a follow-up thank-you message
-              </span>
-              <Toggle
-                on={followUpEnabled}
-                onToggle={() => setFollowUpEnabled(!followUpEnabled)}
-              />
-            </div>
-            {followUpEnabled && (
-              <div className="mt-3 space-y-2">
-                <textarea
-                  value={followUpMessage}
-                  onChange={(e) => setFollowUpMessage(e.target.value)}
-                  placeholder="Btw just wanted to say thanks for following me, I appreciate the support 🙌"
-                  rows={3}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
-                  maxLength={1000}
-                />
-                <div className="flex flex-wrap items-center gap-2 text-sm text-foreground">
-                  <span className="text-xs text-muted">Send it</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={1440}
-                    value={followUpDelayMinutes}
-                    onChange={(e) =>
-                      setFollowUpDelayMinutes(
-                        Math.max(0, Math.min(1440, Math.floor(Number(e.target.value) || 0)))
-                      )
-                    }
-                    className="w-20 rounded-lg border border-border bg-surface px-2 py-1 text-sm text-foreground focus:border-accent/40 focus:outline-none"
-                  />
-                  <span className="text-xs text-muted">
-                    minutes after the link
-                  </span>
-                </div>
                 <p className="text-xs text-muted">
-                  {followUpDelayMinutes > 0
-                    ? `Sent ${followUpDelayMinutes} min after they tap through.`
-                    : "Sent right after they tap through."}
-                  {" {username}"} personalizes it. Max 24 hours, to stay inside
-                  Instagram&apos;s messaging window.
+                  {"{link}"} inserts the tracked link; {"{username}"} personalizes.
                 </p>
               </div>
-            )}
-          </div>
-        </Section>
+              <div className="mt-3 rounded-lg border border-border p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-foreground">
+                    a follow-up thank-you message
+                  </span>
+                  <Toggle
+                    on={followUpEnabled}
+                    onToggle={() => setFollowUpEnabled(!followUpEnabled)}
+                  />
+                </div>
+                {followUpEnabled && (
+                  <div className="mt-3 space-y-2">
+                    <textarea
+                      value={followUpMessage}
+                      onChange={(e) => setFollowUpMessage(e.target.value)}
+                      placeholder="Btw just wanted to say thanks for following me, I appreciate the support 🙌"
+                      rows={3}
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
+                      maxLength={1000}
+                    />
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-foreground">
+                      <span className="text-xs text-muted">Send it</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1440}
+                        value={followUpDelayMinutes}
+                        onChange={(e) =>
+                          setFollowUpDelayMinutes(
+                            Math.max(0, Math.min(1440, Math.floor(Number(e.target.value) || 0)))
+                          )
+                        }
+                        className="w-20 rounded-lg border border-border bg-surface px-2 py-1 text-sm text-foreground focus:border-accent/40 focus:outline-none"
+                      />
+                      <span className="text-xs text-muted">
+                        minutes after the link
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted">
+                      {followUpDelayMinutes > 0
+                        ? `Sent ${followUpDelayMinutes} min after they tap through.`
+                        : "Sent right after they tap through."}
+                      {" {username}"} personalizes it. Max 24 hours, to stay inside
+                      Instagram&apos;s messaging window.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </Section>
+          </>
+        )}
+
+        
       </div>
 
       {/* Right: preview */}
@@ -993,26 +1028,26 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             postThumb={postThumb}
             caption={postCaption}
             sampleComment={keywords[0] ?? ""}
-            dmTriggerEnabled={dmTriggerEnabled}
+            dmTriggerEnabled={dmEnabled ? dmTriggerEnabled : false}
             publicReplyEnabled={publicReplyEnabled}
             publicReplyMessage={publicReplyMessages.find((m) => m.trim()) ?? ""}
-            openingDmEnabled={openingDmEnabled}
-            openingDmMessage={openingDmMessage}
-            openingDmButtonLabel={openingDmButtonLabel}
-            revealMessage={dmMessage}
-            hasLink={Boolean(trackedDestinationUrl.trim())}
-            linkButtonLabel={linkButtonLabel || "Open link"}
-            linkUrl={trackedDestinationUrl.trim() || undefined}
+            openingDmEnabled={dmEnabled && openingDmEnabled}
+            openingDmMessage={dmEnabled ? openingDmMessage : ""}
+            openingDmButtonLabel={dmEnabled ? openingDmButtonLabel : ""}
+            revealMessage={dmEnabled ? dmMessage : ""}
+            hasLink={dmEnabled && Boolean(trackedDestinationUrl.trim())}
+            linkButtonLabel={dmEnabled ? linkButtonLabel || "Open link" : "Open link"}
+            linkUrl={dmEnabled ? trackedDestinationUrl.trim() || undefined : undefined}
             hasSecondLink={
-              secondLinkOpen && Boolean(secondaryDestinationUrl.trim())
+              dmEnabled && secondLinkOpen && Boolean(secondaryDestinationUrl.trim())
             }
             secondLinkButtonLabel={secondaryButtonLabel || "Open link"}
-            requireFollow={requireFollow}
-            followPromptMessage={followPromptMessage}
-            followPromptButtonLabel={followPromptButtonLabel || "i'm following"}
-            followUpEnabled={followUpEnabled}
-            followUpMessage={followUpMessage}
-            followUpDelayMinutes={followUpDelayMinutes}
+            requireFollow={dmEnabled && requireFollow}
+            followPromptMessage={dmEnabled ? followPromptMessage : ""}
+            followPromptButtonLabel={dmEnabled ? followPromptButtonLabel || "i'm following" : "i'm following"}
+            followUpEnabled={dmEnabled && followUpEnabled}
+            followUpMessage={dmEnabled ? followUpMessage : ""}
+            followUpDelayMinutes={dmEnabled ? followUpDelayMinutes : 0}
           />
         </div>
       </div>

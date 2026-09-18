@@ -38,6 +38,8 @@ import {
   reserveWorkspaceDMSend,
 } from "@/lib/billing/usage";
 import { recordWorkerAlert } from "@/lib/ops/worker-health";
+import { chooseVerse, type Verse } from "@/lib/verse-of-day";
+import { NKJV_VERSES } from "@/lib/data/nkjv-verses";
 import {
   buildTrackedUrl,
   renderMessageWithTracking,
@@ -401,36 +403,225 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
         : automation.publicReplyMessage
           ? [automation.publicReplyMessage]
           : [];
+
     if (
       automation.publicReplyEnabled &&
-      replyPool.length > 0 &&
+      (replyPool.length > 0 || automation.publicReplyVerseEnabled) &&
       !existingLog?.publicReplySentAt &&
       !existingLog?.publicReplyDeliveryUnconfirmed
     ) {
+      let verseAssignmentId: string | null = null;
+
       try {
-        const chosen = replyPool[Math.floor(Math.random() * replyPool.length)];
+        const verseHistory = await prisma.dmLog.findMany({
+          where: {
+            automationId: automation.id,
+            verseReference: { not: null },
+          },
+          select: {
+            commenterId: true,
+            verseReference: true,
+          },
+        });
+
+        const commenterHistory = verseHistory
+          .filter((entry) => entry.commenterId === commenterId)
+          .map((entry) => entry.verseReference)
+          .filter((reference): reference is string => Boolean(reference));
+
+        const globallyUsedReferences = verseHistory
+          .map((entry) => entry.verseReference)
+          .filter((reference): reference is string => Boolean(reference));
+
+        let chosenVerse: Verse | null = null;
+
+        if (automation.publicReplyVerseEnabled) {
+          // Reuse a reservation already made for this exact comment. This makes
+          // retries safe after a worker crash or a delivery error.
+          const existingAssignment = await prisma.verseAssignment.findUnique({
+            where: {
+              automationId_commentId: {
+                automationId: automation.id,
+                commentId,
+              },
+            },
+            select: {
+              id: true,
+              verseReference: true,
+              verseText: true,
+            },
+          });
+
+          if (existingAssignment) {
+            chosenVerse = {
+              reference: existingAssignment.verseReference,
+              text: existingAssignment.verseText,
+            };
+            verseAssignmentId = existingAssignment.id;
+          } else {
+            const assignments = await prisma.verseAssignment.findMany({
+              where: {
+                automationId: automation.id,
+              },
+              select: {
+                commenterId: true,
+                verseReference: true,
+              },
+            });
+
+            const assignedToCommenter = assignments
+              .filter((entry) => entry.commenterId === commenterId)
+              .map((entry) => entry.verseReference);
+
+            const globallyAssigned = assignments.map(
+              (entry) => entry.verseReference,
+            );
+
+            const candidateHistory = [
+              ...commenterHistory,
+              ...assignedToCommenter,
+            ];
+            const candidateGlobalHistory = [
+              ...globallyUsedReferences,
+              ...globallyAssigned,
+            ];
+
+            for (let attempt = 0; attempt < NKJV_VERSES.length; attempt++) {
+              const candidate = chooseVerse(
+                NKJV_VERSES,
+                candidateHistory,
+                candidateGlobalHistory,
+              );
+
+              if (!candidate) {
+                break;
+              }
+
+              try {
+                const assignment = await prisma.verseAssignment.create({
+                  data: {
+                    automationId: automation.id,
+                    commenterId,
+                    commentId,
+                    verseReference: candidate.reference,
+                    verseText: candidate.text,
+                  },
+                });
+
+                chosenVerse = candidate;
+                verseAssignmentId = assignment.id;
+                break;
+              } catch (error) {
+                const code =
+                  error &&
+                  typeof error === "object" &&
+                  "code" in error
+                    ? error.code
+                    : null;
+
+                if (code !== "P2002") {
+                  throw error;
+                }
+
+                // Another worker may have reserved this verse or this comment.
+                // If it was this comment, reuse that assignment.
+                const conflictingAssignment =
+                  await prisma.verseAssignment.findUnique({
+                    where: {
+                      automationId_commentId: {
+                        automationId: automation.id,
+                        commentId,
+                      },
+                    },
+                    select: {
+                      id: true,
+                      verseReference: true,
+                      verseText: true,
+                    },
+                  });
+
+                if (conflictingAssignment) {
+                  chosenVerse = {
+                    reference: conflictingAssignment.verseReference,
+                    text: conflictingAssignment.verseText,
+                  };
+                  verseAssignmentId = conflictingAssignment.id;
+                  break;
+                }
+
+                candidateGlobalHistory.push(candidate.reference);
+                candidateHistory.push(candidate.reference);
+              }
+            }
+
+            if (!chosenVerse) {
+              throw new Error("Unable to reserve an NKJV verse.");
+            }
+          }
+        }
+
+        if (automation.publicReplyVerseEnabled && !chosenVerse) {
+          throw new Error("NKJV verse library is empty.");
+        }
+
+        const chosen = chosenVerse
+          ? `${chosenVerse.text} — ${chosenVerse.reference}`
+          : replyPool[Math.floor(Math.random() * replyPool.length)];
+
         const publicReply = renderMessageWithTracking({
           message: chosen,
           commenterName,
           trackedLinks: automation.trackedLinks,
         });
+
         await sendCommentReply({
           context: accessToken,
           commentId: commentId,
           message: publicReply,
           postId: mediaId,
         });
+
+        if (verseAssignmentId) {
+          await prisma.verseAssignment.update({
+            where: { id: verseAssignmentId },
+            data: {
+              status: "sent",
+              sentAt: new Date(),
+            },
+          });
+        }
+
         await prisma.dmLog.update({
           where: {
-            automationId_commentId: { automationId: automation.id, commentId },
+            automationId_commentId: {
+              automationId: automation.id,
+              commentId,
+            },
           },
-          data: { publicReplySentAt: new Date(), publicReplyError: null },
+          data: {
+            publicReplySentAt: new Date(),
+            publicReplyError: null,
+            verseReference: chosenVerse?.reference ?? null,
+            verseText: chosenVerse?.text ?? null,
+          },
         });
       } catch (error) {
         console.error(
-          "[DM Worker] Public comment reply failed:",
-          formatError(error)
+          "[DM Worker] public comment reply failed:",
+          formatError(error),
         );
+
+        if (
+          verseAssignmentId &&
+          !(error instanceof ZernioDeliveryUnconfirmedError)
+        ) {
+          await prisma.verseAssignment
+            .delete({
+              where: { id: verseAssignmentId },
+            })
+            .catch(() => {});
+        }
+
         await prisma.dmLog
           .update({
             where: {
@@ -439,7 +630,11 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
                 commentId,
               },
             },
-            data: { publicReplyError: formatError(error), publicReplyDeliveryUnconfirmed: error instanceof ZernioDeliveryUnconfirmedError },
+            data: {
+              publicReplyError: formatError(error),
+              publicReplyDeliveryUnconfirmed:
+                error instanceof ZernioDeliveryUnconfirmedError,
+            },
           })
           .catch(() => {});
       }

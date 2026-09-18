@@ -172,6 +172,7 @@ model Automation {
   id                 String   @id @default(cuid())
   workspaceId        String
   instagramAccountId String
+  verseAssignments VerseAssignment[]
 
   name           String
   goal           String?
@@ -199,6 +200,7 @@ model Automation {
   // 0 sends it right away.
   followUpDelayMinutes Int @default(0)
   publicReplyEnabled Boolean @default(false)
+  publicReplyVerseEnabled Boolean @default(false)
   publicReplyMessage String?
   publicReplyMessages String[] @default([])
   isActive       Boolean @default(true)
@@ -243,6 +245,8 @@ model DmLog {
   publicReplyDeliveryUnconfirmed Boolean @default(false)
   publicReplySentAt DateTime?
   publicReplyError  String?
+  verseReference String?
+  verseText      String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -410,4 +414,22 @@ model ZernioConnection {
 model PostbackDelivery {
   id String @id
   createdAt DateTime @default(now())
+}
+
+model VerseAssignment {
+  id             String   @id @default(cuid())
+  automationId   String
+  commenterId    String
+  commentId      String
+  verseReference String
+  verseText      String
+  status         String   @default("reserved")
+  createdAt      DateTime @default(now())
+  sentAt         DateTime?
+
+  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@unique([automationId, verseReference])
+  @@unique([automationId, commentId])
+  @@index([automationId, commenterId])
 }
