@@ -565,8 +565,8 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
         }
 
         const chosen = chosenVerse
-          ? `${chosenVerse.text} — ${chosenVerse.reference}`
-          : replyPool[Math.floor(Math.random() * replyPool.length)];
+  ? `Shalom❤️. Verse of the day for you: "${chosenVerse.text}" — ${chosenVerse.reference}`
+  : replyPool[Math.floor(Math.random() * replyPool.length)];
 
         const publicReply = renderMessageWithTracking({
           message: chosen,
